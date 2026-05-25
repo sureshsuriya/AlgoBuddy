@@ -1,20 +1,10 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { getClientIp } from "@/lib/getClientIp";
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 5;
 const rateLimitBuckets = new Map();
-
-function getClientIp(headers) {
-  const forwardedFor = headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    const first = forwardedFor.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  const realIp = headers.get("x-real-ip");
-  if (realIp) return realIp.trim();
-  return "unknown";
-}
 
 function allowRequest(ip) {
   const now = Date.now();
