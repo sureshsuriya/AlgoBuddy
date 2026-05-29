@@ -6,6 +6,7 @@ import CustomArrayInput from "@/app/components/ui/customArrayInput";
 import useVisualizerKeyboard from "@/app/hooks/useVisualizerKeyboard";
 import usePlayback from "@/app/hooks/usePlayback";
 import PlaybackControls from "@/app/components/ui/PlaybackControls";
+import useVisualizerReset from "@/app/hooks/useVisualizerReset";
 import ChallengeModePanel, {
   createOptions,
   useSortingChallenge,
@@ -221,6 +222,19 @@ const SelectionSortVisualizer = () => {
     };
   
     // Clean up on unmount
+  useVisualizerReset(() => {
+    isSortingRef.current = false;
+    if (resolveRef.current) { resolveRef.current(); resolveRef.current = null; }
+    if (animationRef.current) clearTimeout(animationRef.current);
+    setArray([]);
+    setSorting(false);
+    setSorted(false);
+    setComparisons(0);
+    setSwaps(0);
+    setCurrentStep(0);
+    setTotalSteps(0);
+    setCurrentIndices({ i: -1, j: -1, minIdx: -1 });
+  });
     useEffect(() => {
       return () => {
         if (animationRef.current) {
@@ -264,6 +278,7 @@ const SelectionSortVisualizer = () => {
                     onUseCustomArray={handleCustomArray}
                     disabled={sorting}
                     placeholder="e.g. 5, 3, 8, 1, 2"
+                    currentArray={array}
                   />
                 </div>
                 <div className="flex flex-col">
@@ -276,6 +291,7 @@ const SelectionSortVisualizer = () => {
                   </button>
                   <button
                     onClick={reset}
+                    disabled={sorting}
                     className="w-full bg-transparent border border-[#a435f0] text-[#a435f0] hover:bg-[#f3e8ff] dark:hover:bg-[#a435f0]/20 mt-4 px-4 py-2 rounded transition-colors"
                   >
                     Reset All
@@ -288,8 +304,6 @@ const SelectionSortVisualizer = () => {
                   isPaused={isPaused}
                   onTogglePlayPause={togglePlayPause}
                   speed={speed}
-                  onIncreaseSpeed={increaseSpeed}
-                  onDecreaseSpeed={decreaseSpeed}
                   onSpeedChange={setSpeed}
                 />
               )}

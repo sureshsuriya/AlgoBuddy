@@ -7,6 +7,7 @@ import { saveToStorage, loadFromStorage, removeFromStorage } from "@/utils/stora
 import useVisualizerKeyboard from "@/app/hooks/useVisualizerKeyboard";
 import usePlayback from "@/app/hooks/usePlayback";
 import PlaybackControls from "@/app/components/ui/PlaybackControls";
+import useVisualizerReset from "@/app/hooks/useVisualizerReset";
 import ChallengeModePanel, {
   createOptions,
   useSortingChallenge,
@@ -38,7 +39,7 @@ const createBubbleSwapQuestion = (arr, j) => {
 const BubbleSortVisualizer = () => {
   const [sorting, setSorting] = useState(false);
   const [sorted, setSorted] = useState(false);
-  const [array, setArray] = useState(() => loadFromStorage("bubble-array", []));
+  const [array, setArray] = useState([]);
   const [challengeEnabled, setChallengeEnabled] = useState(false);
   const {
     isPaused,
@@ -53,7 +54,7 @@ const BubbleSortVisualizer = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [totalSteps, setTotalSteps] = useState(0);
 
-  useEffect(() => { saveToStorage("bubble-array", array); }, [array]);
+  
   useEffect(() => { saveToStorage("bubble-speed", speed); }, [speed]);
 
   const [comparisons, setComparisons] = useState(0);
@@ -64,6 +65,20 @@ const BubbleSortVisualizer = () => {
   const animationRef = useRef(null);
   const isSortingRef = useRef(false);
   const resolveRef = useRef(null);
+  useVisualizerReset(() => {
+    isSortingRef.current = false;
+    if (resolveRef.current) { resolveRef.current(); resolveRef.current = null; }
+    if (animationRef.current) clearTimeout(animationRef.current);
+    setArray([]);
+    setSorting(false);
+    setSorted(false);
+    setComparisons(0);
+    setSwaps(0);
+    setCurrentStep(0);
+    setTotalSteps(0);
+    setCurrentIndices({ i: -1, j: -1 });
+    setChallengeEnabled(false);
+  });
   const {
     activeQuestion,
     askChallenge,
@@ -181,10 +196,6 @@ const BubbleSortVisualizer = () => {
     resetStats();
   };
 
-  useEffect(() => {
-    return () => { if (animationRef.current) clearTimeout(animationRef.current); };
-  }, []);
-
   // ── Stable callbacks for the keyboard hook ──────────────────────────────
   // useCallback keeps the function reference stable so the hook's useEffect
   // doesn't re-subscribe on every render.
@@ -233,6 +244,7 @@ const BubbleSortVisualizer = () => {
                   resetStats();
                 }}
                 disabled={sorting}
+                currentArray={array}
                 className="w-full"
               />
             </div>
@@ -246,6 +258,7 @@ const BubbleSortVisualizer = () => {
               </button>
               <button
                 onClick={reset}
+                disabled={sorting}
                 className="w-full bg-none text-[#a435f0] border border-[#a435f0] hover:bg-[#f3e8ff] dark:hover:bg-[#a435f0]/20 px-4 py-2 rounded transition-colors text-sm sm:text-base"
               >
                 Reset All
@@ -259,8 +272,6 @@ const BubbleSortVisualizer = () => {
               isPaused={isPaused}
               onTogglePlayPause={togglePlayPause}
               speed={speed}
-              onIncreaseSpeed={increaseSpeed}
-              onDecreaseSpeed={decreaseSpeed}
               onSpeedChange={setSpeed}
             />
           )}

@@ -6,6 +6,7 @@ import CustomArrayInput from "@/app/components/ui/customArrayInput";
 import useVisualizerKeyboard from "@/app/hooks/useVisualizerKeyboard";
 import usePlayback from "@/app/hooks/usePlayback";
 import PlaybackControls from "@/app/components/ui/PlaybackControls";
+import useVisualizerReset from "@/app/hooks/useVisualizerReset";
 
 const getFontSize = (value) => {
   const len = String(value).length;
@@ -45,6 +46,19 @@ const QuickSortVisualizer = () => {
   const animationRef = useRef(null);
   const isSortingRef = useRef(false);
   const resolveRef = useRef(null);
+  useVisualizerReset(() => {
+    isSortingRef.current = false;
+    if (resolveRef.current) { resolveRef.current(); resolveRef.current = null; }
+    if (animationRef.current) clearTimeout(animationRef.current);
+    setArray([]);
+    setSorting(false);
+    setSorted(false);
+    setComparisons(0);
+    setSwaps(0);
+    setCurrentStep(0);
+    setTotalSteps(0);
+    setCurrentIndices({ pivot: -1, left: -1, right: -1, partitionIndex: -1, stack: [], partitions: [] });
+  });
 
   // Reset all stats and state
   const resetStats = () => {
@@ -348,6 +362,7 @@ const QuickSortVisualizer = () => {
                   resetStats();
                 }}
                 disabled={sorting}
+                currentArray={array}
               />
             </div>
             <div className="flex flex-col gap-2">
@@ -360,6 +375,7 @@ const QuickSortVisualizer = () => {
               </button>
               <button
                 onClick={reset}
+                disabled={sorting}
                 className="w-full bg-none text-[#a435f0] border border-[#a435f0] hover:bg-[#f3e8ff] dark:hover:bg-[#a435f0]/20 px-4 py-2 rounded transition-colors text-sm sm:text-base"
               >
                 Reset All
@@ -372,8 +388,6 @@ const QuickSortVisualizer = () => {
               isPaused={isPaused}
               onTogglePlayPause={togglePlayPause}
               speed={speed}
-              onIncreaseSpeed={increaseSpeed}
-              onDecreaseSpeed={decreaseSpeed}
               onSpeedChange={setSpeed}
             />
           )}
