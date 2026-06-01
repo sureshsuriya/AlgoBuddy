@@ -65,8 +65,8 @@ export async function POST(request, { params }) {
 
   const body = await request.json().catch(() => ({}));
   const result = await claimSessionPresenter(params.sessionId, {
-    presenterId: body.presenterId,
-    userId: configured ? user?.id || "" : body.createdBy || "anonymous",
+    userId: configured ? user?.id || "" : body.presenterId || "anonymous",
+    sessionSecret: body.sessionSecret,
   });
 
   if (result.error) {
