@@ -12,6 +12,7 @@ import ChallengeModePanel, {
   createOptions,
   useSortingChallenge,
 } from "@/app/visualizer/array/components/ChallengeMode";
+import { bubbleSortGenerator } from "@/features/algorithms/array/bubbleSortLogic";
 
 const getFontSize = (value) => {
   const len = String(value).length;
@@ -118,72 +119,67 @@ const BubbleSortVisualizer = () => {
 
     isSortingRef.current = true;
     setSorting(true);
-    let arr = [...array];
-    let n = arr.length;
-    let tempSwaps = 0;
-    let tempComparisons = 0;
-    setTotalSteps(Math.floor((n * (n - 1)) / 2));
-    setCurrentStep(0);
+    
+    const generator = bubbleSortGenerator(array);
 
-    for (let i = 0; i < n - 1; i++) {
-      let swapped = false;
-      setCurrentPhase(`Pass ${i + 1} of ${n - 1}`);
-      setStepExplanation(`Starting pass ${i + 1}, comparing adjacent elements.`);
+    for (const frame of generator) {
+      if (!isSortingRef.current) return;
 
-      for (let j = 0; j < n - i - 1; j++) {
-        if (!isSortingRef.current) return;
-        setCurrentIndices({ i: j, j: j + 1 });
-        tempComparisons++;
-        setComparisons(tempComparisons);
-        setCurrentStep((prev) => prev + 1);
-        setStepExplanation(`Comparing ${arr[j]} and ${arr[j + 1]} at indices ${j} and ${j + 1}.`);
+      const { type, payload } = frame;
 
+      if (type === 'init') {
+        setTotalSteps(payload.totalSteps);
+        setCurrentStep(0);
+      } 
+      else if (type === 'phase_start') {
+        setCurrentPhase(`Pass ${payload.pass} of ${payload.totalPasses}`);
+        setStepExplanation(`Starting pass ${payload.pass}, comparing adjacent elements.`);
+      }
+      else if (type === 'comparing') {
+        setCurrentIndices({ i: payload.j, j: payload.jNext });
+        setComparisons(payload.comparisons);
+        setCurrentStep(payload.step);
+        setStepExplanation(`Comparing ${payload.arr[payload.j]} and ${payload.arr[payload.jNext]} at indices ${payload.j} and ${payload.jNext}.`);
         await cancellableDelay();
+      }
+      else if (type === 'swap_needed') {
+        setStepExplanation(`Since ${payload.arr[payload.j]} > ${payload.arr[payload.jNext]}, swapping elements at indices ${payload.j} and ${payload.jNext}.`);
+        
+        await askChallenge(createBubbleSwapQuestion(payload.arr, payload.j));
         if (!isSortingRef.current) return;
 
-        if (arr[j] > arr[j + 1]) {
-          setStepExplanation(`Since ${arr[j]} > ${arr[j + 1]}, swapping elements at indices ${j} and ${j + 1}.`);
-          await askChallenge(createBubbleSwapQuestion(arr, j));
-          if (!isSortingRef.current) return;
-
-          const bars = document.querySelectorAll(".bar");
-          const bar1 = bars[j];
-          const bar2 = bars[j + 1];
-          if (bar1 && bar2) {
-            await gsap.to(bar1, { x: "+=40", duration: 0.3, yoyo: true });
-            await gsap.to(bar2, { x: "-=40", duration: 0.3, yoyo: true });
-            await gsap.to([bar1, bar2], { x: "0", duration: 0 });
-          }
-
-          [arr[j], arr[j + 1]] = [arr[j + 1], arr[j]];
-          swapped = true;
-          tempSwaps++;
-          setSwaps(tempSwaps);
-          setArray([...arr]);
-          setStepExplanation(`Swapped ${arr[j]} and ${arr[j + 1]} to continue sorting this pass.`);
-
-          await cancellableDelay();
-          if (!isSortingRef.current) return;
-        } else {
-          setStepExplanation(`Since ${arr[j]} <= ${arr[j + 1]}, no swap is needed.`);
-          await cancellableDelay();
-          if (!isSortingRef.current) return;
+        const bars = document.querySelectorAll(".bar");
+        const bar1 = bars[payload.j];
+        const bar2 = bars[payload.jNext];
+        if (bar1 && bar2) {
+          await gsap.to(bar1, { x: "+=40", duration: 0.3, yoyo: true });
+          await gsap.to(bar2, { x: "-=40", duration: 0.3, yoyo: true });
+          await gsap.to([bar1, bar2], { x: "0", duration: 0 });
         }
       }
-
-      if (!swapped) {
-        setStepExplanation(`No swaps occurred in pass ${i + 1}; the array is already sorted.`);
+      else if (type === 'swapped') {
+        setSwaps(payload.swaps);
+        setArray(payload.arr);
+        setStepExplanation(`Swapped ${payload.arr[payload.jNext]} and ${payload.arr[payload.j]} to continue sorting this pass.`);
+        await cancellableDelay();
+      }
+      else if (type === 'no_swap') {
+        setStepExplanation(`Since ${payload.arr[payload.j]} <= ${payload.arr[payload.jNext]}, no swap is needed.`);
+        await cancellableDelay();
+      }
+      else if (type === 'early_completion') {
+        setStepExplanation(`No swaps occurred; the array is already sorted.`);
         setCurrentPhase("Completion Check");
         await cancellableDelay();
-        break;
+      }
+      else if (type === 'completed') {
+        isSortingRef.current = false;
+        setSorting(false);
+        setSorted(true);
+        setCurrentPhase("Completed");
+        setStepExplanation("Array is fully sorted.");
       }
     }
-
-    isSortingRef.current = false;
-    setSorting(false);
-    setSorted(true);
-    setCurrentPhase("Completed");
-    setStepExplanation("Array is fully sorted.");
   };
 
   const reset = () => {
