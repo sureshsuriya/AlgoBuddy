@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useUser } from "@/features/user/UserContext";
 import UpcomingTournament from "@/app/components/dashboard/UpcomingTournament";
@@ -7,19 +8,19 @@ import MatchmakingModal from "@/app/components/ui/MatchmakingModal";
 import DuelSimulatorModal from "@/app/components/ui/DuelSimulatorModal";
 import CreateDuelModal from "@/app/components/ui/CreateDuelModal";
 import Footer from "@/app/components/footer";
-import { 
-  Home, 
-  Swords, 
-  Trophy, 
-  Flame, 
-  Shield, 
-  Activity, 
-  Award, 
-  History, 
-  User, 
-  Clock, 
-  Zap, 
-  Play, 
+import {
+  Home,
+  Swords,
+  Trophy,
+  Flame,
+  Shield,
+  Activity,
+  Award,
+  History,
+  User,
+  Clock,
+  Zap,
+  Play,
   ChevronRight,
   TrendingUp,
   Target
@@ -48,8 +49,26 @@ const LEADERBOARD_ROWS = [
   { rank: 5, name: "Ananya", rating: 2105 },
 ];
 
+function getInitials(name) {
+  if (!name) return "??";
+  const cleanName = name.includes("@") ? name.split("@")[0] : name;
+  const parts = cleanName.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return parts[0].slice(0, 2).toUpperCase();
+}
+
 export default function ArenaPage() {
   const { user, loading } = useUser();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [user, loading, router]);
+
   const [activeTab, setActiveTab] = useState("home"); // home, live, ranked, friend, leaderboard, streak, tournaments, badges, history
 
   // Modals state
@@ -99,12 +118,20 @@ export default function ArenaPage() {
     setDuelSimulatorOpen(true);
   };
 
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-neutral-900">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
   return (
     <section className="bg-slate-50/50 dark:bg-neutral-900 min-h-screen text-slate-800 dark:text-neutral-200">
-      <div className="max-w-[1400px] mx-auto px-4 py-24">
+      <div className="max-w-[1400px] mx-auto px-4 pt-8 pb-16">
         {/* Main Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr_300px] gap-6">
-          
+
           {/* ─── Column 1: Left Sidebar ────────────────────────────────────────── */}
           <aside className="space-y-6">
             {/* Navigation Menu */}
@@ -127,11 +154,10 @@ export default function ArenaPage() {
                     <button
                       key={item.id}
                       onClick={() => setActiveTab(item.id)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition ${
-                        isActive
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition ${isActive
                           ? "bg-primary text-white shadow-sm"
                           : "text-slate-500 hover:text-slate-800 hover:bg-slate-50 dark:text-neutral-400 dark:hover:text-neutral-200 dark:hover:bg-neutral-900/40"
-                      }`}
+                        }`}
                     >
                       <Icon size={18} />
                       <span>{item.label}</span>
@@ -181,7 +207,7 @@ export default function ArenaPage() {
                 </div>
               </div>
 
-              <button 
+              <button
                 onClick={() => setMatchmakingOpen(true)}
                 className="w-full py-2.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold transition shadow-md shadow-primary/10"
               >
@@ -207,14 +233,14 @@ export default function ArenaPage() {
                       Challenge developers in real-time DSA battles, climb the leaderboard and become the best.
                     </p>
                     <div className="flex flex-wrap gap-3 justify-center md:justify-start">
-                      <button 
+                      <button
                         onClick={() => setMatchmakingOpen(true)}
                         className="px-5 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
                       >
                         <Zap size={14} />
                         Find Match
                       </button>
-                      <button 
+                      <button
                         onClick={() => setCreateDuelOpen(true)}
                         className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
                       >
@@ -226,14 +252,26 @@ export default function ArenaPage() {
 
                   {/* Top 3 Avatars Podium Graphic */}
                   <div className="flex gap-4 items-end pr-2 select-none">
-                    {/* 2nd Place */}
+                    {/* 2nd Place (Logged in User) */}
                     <div className="flex flex-col items-center">
-                      <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs shadow border-2 border-slate-600 mb-1.5">
-                        PK
+                      <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs shadow border-2 border-slate-600 mb-1.5 overflow-hidden">
+                        {user?.user_metadata?.avatar_url || user?.user_metadata?.picture ? (
+                          <img
+                            src={user.user_metadata.avatar_url || user.user_metadata.picture}
+                            alt="avatar"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-light flex items-center justify-center text-xs font-bold">
+                            {getInitials(currentUserStats.name || user?.email)}
+                          </div>
+                        )}
                       </div>
-                      <span className="text-[10px] text-slate-300 block font-semibold mb-1">Pankaj</span>
-                      <span className="text-[9px] text-slate-400 block mb-2">2320 XP</span>
-                      <div className="w-14 h-14 bg-slate-800 border-t border-slate-700 rounded-t-lg flex items-center justify-center font-bold text-slate-400 shadow-lg text-lg">
+                      <span className="text-[10px] text-slate-300 block font-semibold mb-1 truncate max-w-[64px]">
+                        {(currentUserStats.name || "Pankaj").split(" ")[0]}
+                      </span>
+                      <span className="text-[9px] text-slate-400 block mb-2">{currentUserStats.xp || 2320} XP</span>
+                      <div className="w-14 h-12 bg-slate-800 border-t border-slate-700 rounded-t-lg flex items-center justify-center font-bold text-slate-400 shadow-lg text-lg">
                         2
                       </div>
                     </div>
@@ -275,7 +313,7 @@ export default function ArenaPage() {
                           Live
                         </span>
                       </div>
-                      <span 
+                      <span
                         onClick={() => setActiveTab("live")}
                         className="text-xs text-primary dark:text-purple-400 font-semibold cursor-pointer hover:underline"
                       >
@@ -298,9 +336,8 @@ export default function ArenaPage() {
                                 {b.time}
                               </span>
                               <span className="flex items-center gap-1">
-                                <span className={`w-1.5 h-1.5 rounded-full ${
-                                  b.color === "green" ? "bg-green-500" : "bg-amber-500"
-                                }`} />
+                                <span className={`w-1.5 h-1.5 rounded-full ${b.color === "green" ? "bg-green-500" : "bg-amber-500"
+                                  }`} />
                                 {b.topic} ({b.difficulty})
                               </span>
                             </div>
@@ -364,7 +401,7 @@ export default function ArenaPage() {
                   <div className="bg-white dark:bg-neutral-800 border border-slate-100 dark:border-neutral-800/80 rounded-2xl p-5 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-sm font-bold text-slate-800 dark:text-neutral-200">Global Leaderboard</h3>
-                      <span 
+                      <span
                         onClick={() => setActiveTab("leaderboard")}
                         className="text-xs text-primary dark:text-purple-400 font-semibold cursor-pointer hover:underline"
                       >
@@ -376,9 +413,8 @@ export default function ArenaPage() {
                       {LEADERBOARD_ROWS.map((row) => (
                         <div key={row.rank} className="flex items-center justify-between text-xs px-2 py-1.5 border-b border-slate-50 dark:border-neutral-800 last:border-0">
                           <div className="flex items-center gap-3">
-                            <span className={`w-5 text-center font-bold ${
-                              row.rank === 1 ? "text-amber-500" : row.rank === 2 ? "text-slate-400" : "text-slate-500"
-                            }`}>
+                            <span className={`w-5 text-center font-bold ${row.rank === 1 ? "text-amber-500" : row.rank === 2 ? "text-slate-400" : "text-slate-500"
+                              }`}>
                               {row.rank}
                             </span>
                             <span className="font-semibold text-slate-850 dark:text-neutral-200">{row.name}</span>
@@ -397,7 +433,7 @@ export default function ArenaPage() {
                 <div className="bg-white dark:bg-neutral-800 border border-slate-100 dark:border-neutral-800/80 rounded-2xl p-5 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-bold text-slate-800 dark:text-neutral-200">Recent Battles</h3>
-                    <span 
+                    <span
                       onClick={() => setActiveTab("history")}
                       className="text-xs text-primary dark:text-purple-400 font-semibold cursor-pointer hover:underline"
                     >
@@ -413,11 +449,10 @@ export default function ArenaPage() {
                             <span className="font-bold text-slate-700 dark:text-neutral-300 truncate">
                               You vs {b.opponent}
                             </span>
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                              b.result === "Victory"
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${b.result === "Victory"
                                 ? "bg-emerald-500/10 text-emerald-500"
                                 : "bg-red-500/10 text-red-500"
-                            }`}>
+                              }`}>
                               {b.result}
                             </span>
                           </div>
@@ -478,7 +513,7 @@ export default function ArenaPage() {
                 )}
 
                 {activeTab === "ranked" && (
-                  <button 
+                  <button
                     onClick={() => setMatchmakingOpen(true)}
                     className="px-6 py-3 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold shadow-md shadow-primary/10 transition"
                   >
@@ -487,7 +522,7 @@ export default function ArenaPage() {
                 )}
 
                 {activeTab === "friend" && (
-                  <button 
+                  <button
                     onClick={() => setCreateDuelOpen(true)}
                     className="px-6 py-3 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold shadow-md shadow-primary/10 transition"
                   >
@@ -536,11 +571,10 @@ export default function ArenaPage() {
                   return (
                     <div key={day} className="flex flex-col items-center">
                       <span className="text-[9px] text-slate-400 dark:text-neutral-500 block mb-1 font-semibold">{day[0]}</span>
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                        isActive
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${isActive
                           ? "bg-amber-500 text-white shadow-sm"
                           : "bg-slate-100 dark:bg-neutral-900 text-slate-400 dark:text-neutral-600"
-                      }`}>
+                        }`}>
                         {isActive ? "🔥" : "•"}
                       </div>
                     </div>
@@ -599,7 +633,7 @@ export default function ArenaPage() {
             <div className="bg-white dark:bg-neutral-800 border border-slate-100 dark:border-neutral-800/80 rounded-2xl p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-bold text-slate-800 dark:text-neutral-200">Badges</h3>
-                <span 
+                <span
                   onClick={() => setActiveTab("badges")}
                   className="text-xs text-primary dark:text-purple-400 font-semibold cursor-pointer hover:underline"
                 >
@@ -614,8 +648,8 @@ export default function ArenaPage() {
                   { label: "Streak God", emoji: "🔥", bg: "bg-red-500/10 border-red-500/20" },
                   { label: "Consistency King", emoji: "👑", bg: "bg-blue-500/10 border-blue-500/20" }
                 ].map((b, idx) => (
-                  <div 
-                    key={idx} 
+                  <div
+                    key={idx}
                     className={`aspect-square rounded-xl flex items-center justify-center text-xl border ${b.bg} shadow-sm`}
                     title={b.label}
                   >
