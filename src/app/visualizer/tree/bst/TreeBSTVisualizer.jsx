@@ -6,6 +6,7 @@ import PlaybackControls from "@/app/components/ui/PlaybackControls";
 import Breadcrumbs from "@/app/components/ui/Breadcrumbs";
 import { createVisualizerPaths } from "@/app/visualizer/components/VisualizerPageLayout";
 import { generateDeleteSteps } from "@/features/algorithms/tree/bstDeleteLogic";
+import { CustomInputPanel } from "@/app/visualizer/components/CustomInputPanel";
 import {
   Info,
   Layers,
@@ -382,6 +383,21 @@ export default function TreeBSTVisualizer({ initialMode }) {
     setTargetTreeRoot(newRoot);
     setMessage(`Generated beautiful BST with ${sequence.length} nodes.`);
   }, [resetPlayback]);
+
+  const handleCustomTreeInput = useCallback((parsedArray) => {
+    if (parsedArray === null) {
+      generateRandomTree();
+    } else {
+      resetPlayback();
+      let newRoot = null;
+      parsedArray.forEach(val => {
+        newRoot = insertNodeFunctional(newRoot, val);
+      });
+      setRoot(newRoot);
+      setTargetTreeRoot(newRoot);
+      setMessage(`Generated custom BST with ${parsedArray.length} nodes.`);
+    }
+  }, [generateRandomTree, resetPlayback]);
 
 
 
@@ -1200,6 +1216,13 @@ export default function TreeBSTVisualizer({ initialMode }) {
                 })}
               </div>
             </div>
+
+            {/* Custom Input Panel for Tree */}
+            <CustomInputPanel
+              inputType="array"
+              onApply={handleCustomTreeInput}
+              currentData={[]}
+            />
 
             {/* Quiz Challenge Card */}
             <div className="bg-gray-50 dark:bg-slate-900/70 border border-gray-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col gap-4 shadow-lg shadow-black/20">
