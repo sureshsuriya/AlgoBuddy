@@ -68,6 +68,11 @@ const nextConfig = {
         hostname: "images.unsplash.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "api.producthunt.com",
+        pathname: "/**",
+      },
     ],
   },
 	async redirects() {
