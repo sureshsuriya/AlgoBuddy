@@ -3,6 +3,8 @@ package com.algobuddy.backend.service;
 import com.algobuddy.backend.entity.MySheet;
 import com.algobuddy.backend.repository.MySheetRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +17,11 @@ import java.util.UUID;
 public class MySheetService {
 
     private final MySheetRepository mySheetRepository;
+
+    @Transactional(readOnly = true)
+    public Page<MySheet> getMySheet(UUID userId, Pageable pageable) {
+        return mySheetRepository.findByUserId(userId, pageable);
+    }
 
     @Transactional(readOnly = true)
     public List<MySheet> getMySheet(UUID userId) {

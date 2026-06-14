@@ -22,7 +22,6 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -89,15 +88,43 @@ public class PracticeService {
             return getUserProgress(userId);
         }
 
+        List<BulkProgressRequest.Item> validItems = request.getItems().stream()
+                .filter(item -> item.getProblemId() != null && !item.getProblemId().trim().isEmpty() && item.getStatus() != null)
+                .toList();
+
+        if (validItems.isEmpty()) {
+            return getUserProgress(userId);
+        }
+
+        List<String> problemIds = validItems.stream().map(BulkProgressRequest.Item::getProblemId).toList();
+        List<UserProgress> existingProgress = progressRepository.findByUserIdAndProblemIdIn(userId, problemIds);
+
+        Map<String, UserProgress> existingProgressMap = existingProgress.stream()
+                .collect(Collectors.toMap(UserProgress::getProblemId, p -> p));
+
+        List<UserProgress> toSave = new java.util.ArrayList<>();
         boolean anyCompleted = false;
 
-        for (BulkProgressRequest.Item item : request.getItems()) {
-            if (item.getProblemId() == null || item.getProblemId().trim().isEmpty() || item.getStatus() == null) continue;
-            progressRepository.upsertProgress(userId, item.getProblemId(), item.getStatus());
+        for (BulkProgressRequest.Item item : validItems) {
+            UserProgress progress = existingProgressMap.get(item.getProblemId());
+            if (progress != null) {
+                progress.setStatus(item.getStatus());
+                progress.setUpdatedAt(OffsetDateTime.now());
+            } else {
+                progress = new UserProgress();
+                progress.setUserId(userId);
+                progress.setProblemId(item.getProblemId());
+                progress.setStatus(item.getStatus());
+                progress.setUpdatedAt(OffsetDateTime.now());
+            }
+            toSave.add(progress);
+
             if ("Completed".equals(item.getStatus())) {
                 anyCompleted = true;
             }
         }
+
+        progressRepository.saveAll(toSave);
 
         if (anyCompleted) {
             self.updateStreakWithRetry(userId);
