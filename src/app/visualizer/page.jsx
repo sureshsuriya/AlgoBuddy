@@ -10,8 +10,8 @@ import GraphModal from "@/app/components/models/GraphModal";
 import TutorialOverlay from "@/app/components/ui/TutorialOverlay";
 import BackToTop from "../components/ui/backtotop";
 import BookmarkSection from "@/app/components/ui/BookmarkSection";
-import DifficultySelector from "@/app/components/DifficultySelector";
 import KeyboardShortcuts from "@/app/components/KeyboardShortcuts";
+import AlgorithmNotes from "@/app/components/AlgorithmNotes";
 
 export const metadata = {
   title: "Algorithm Visualizer | AlgoBuddy",
@@ -787,7 +787,7 @@ const Visualizer = () => {
 
       <KeyboardShortcuts />
 
-      <DifficultySelector />
+      <AlgorithmNotes />
 
       <VisualizerClient initialSections={clientSections} />
 
