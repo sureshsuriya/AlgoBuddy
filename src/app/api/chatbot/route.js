@@ -8,7 +8,7 @@
  * - Conversational memory via full message history array (clamped to 20)
  * - Dual-role system prompt: AlgoBuddy Product Guide + DSA Expert
  * - Complete DSA algorithm knowledge: Basic → Advanced with examples
- * - Provider: Google Gemini (gemini-2.0-flash)
+ * - Provider: Google Gemini (gemini-2.5-flash)
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -186,7 +186,7 @@ GENERAL FORMATTING RULES
 // ─── Gemini Client ────────────────────────────────────────────────────────────
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const MODEL = "gemini-2.0-flash";
+const MODEL = "gemini-2.5-flash";
 const MAX_TOKENS = 2048;
 
 // ─── Validation ───────────────────────────────────────────────────────────────
@@ -284,7 +284,12 @@ export async function POST(request) {
         const model = genAI.getGenerativeModel({
           model: MODEL,
           systemInstruction: SYSTEM_PROMPT,
-          generationConfig: { maxOutputTokens: MAX_TOKENS },
+          generationConfig: {
+            maxOutputTokens: MAX_TOKENS,
+            // Disable thinking mode for gemini-2.5-flash to keep latency low
+            // and avoid burning thinking token budget on a chat usecase.
+            thinkingConfig: { thinkingBudget: 0 },
+          },
         });
 
         const structuredContents = toGeminiContents(clampedMessages);
@@ -305,18 +310,37 @@ export async function POST(request) {
         enqueue({ type: "done" });
       } catch (err) {
         const message = err?.message ?? String(err);
+        const httpStatus = err?.status ?? err?.httpStatus;
         console.error("[AlgoBot API Error]", message);
-        if (err?.stack) console.error("[AlgoBot API Error Stack]", err.stack);
+        if (err?.stack) console.error("[AlgoBot API Error Stack]\n", err.stack);
+
+        let userMessage;
+        if (
+          httpStatus === 429 ||
+          message.includes("429") ||
+          message.includes("Too Many Requests") ||
+          message.includes("Quota exceeded")
+        ) {
+          userMessage =
+            "AlgoBot is handling too many requests right now. Please wait a moment and try again! ⏳";
+        } else if (message.includes("timeout") || message.includes("Stream timeout")) {
+          userMessage = "The response took too long. Please try asking again! ⏰";
+        } else if (message.includes("Failed to parse stream")) {
+          userMessage = "There was a connection hiccup with the AI service. Please try again! 🔄";
+        } else {
+          userMessage =
+            "Something went wrong with the AI service. Please try again in a moment!";
+        }
+
         try {
-          enqueue({
-            type: "error",
-            message: "AI service connection error. Please verify your local configuration and try again.",
-          });
-        } catch (_) {}
-        controller.error(err);
+          enqueue({ type: "error", message: userMessage });
+        } catch (_) { }
+        // Do NOT call controller.error() — that signals a broken stream pipe to Next.js
+        // and causes a 500 "failed to pipe response". We already sent the error SSE
+        // event above; the finally block will close the stream cleanly.
       } finally {
         clearTimeout(timeoutId);
-        try { controller.close(); } catch (_) {}
+        try { controller.close(); } catch (_) { }
       }
     },
   });
