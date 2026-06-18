@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import Chatbot from "@/app/components/ui/Chatbot";
 import Navbar from "@/app/components/navbar";
 import { CommandPalette } from "@/app/components/CommandPalette";
+import FloatingNotesAssistant from "@/app/components/FloatingNotesAssistant";
 
 export default function ClientLayoutWrapper({ children }) {
   const pathname = usePathname();
@@ -14,6 +15,7 @@ export default function ClientLayoutWrapper({ children }) {
       <Toaster position="top-right" />
       {!isAuthPage && <Navbar />}
       {children}
+      {!isAuthPage && <FloatingNotesAssistant />}
       {!isAuthPage && <Chatbot />}
       {!isAuthPage && <CommandPalette />}
     </>
