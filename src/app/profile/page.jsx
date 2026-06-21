@@ -147,7 +147,7 @@ export default function ProfilePage() {
       setFormData({
         name: meta.name || "",
         branch: meta.branch || "",
-        location: meta.location || meta.address || "Uttarakhand, India",
+        location: meta.location || meta.address || "",
         skills: meta.skills || "",
         resume_link: meta.resume_link || "",
         github_profile: meta.github_profile || "",
@@ -241,7 +241,7 @@ export default function ProfilePage() {
     [arenaProfile?.battlesWon, arenaProfile?.rank, realStats.solvedCount, recentlyViewed.length, streakData?.current]
   );
 
-  const displayName = formData.name || user?.user_metadata?.name || "Pankaj Singh";
+  const displayName = formData.name || user?.user_metadata?.name || user?.email?.split('@')[0] || "User";
   const initials = displayName
     .split(" ")
     .map((part) => part[0])
@@ -250,12 +250,11 @@ export default function ProfilePage() {
     .toUpperCase();
   const handle = formData.github_profile
     ? `@${formData.github_profile.replace(/\/$/, "").split("/").pop()}`
-    : "@pankaj_codes";
-  const branch = formData.branch || "CSE Student";
-  const location = formData.location || "Uttarakhand, India";
-  const bio =
-    formData.skills ||
-    "Passionate about DSA, Problem Solving and Building things that make an impact.";
+    : `@${user?.email?.split('@')[0] || "user"}`;
+  const branch = formData.branch || "Add your branch";
+  const location = formData.location || "Add your location";
+  const bio = formData.skills || "No bio provided.";
+  const joinedDate = user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : "Recently";
   const arenaLevel = arenaProfile?.level || Math.max(1, Math.floor(realStats.solvedCount / 25) + 1);
   const arenaXp = arenaProfile?.xp || realStats.solvedCount * 10;
   const xpStep = 1000;
@@ -548,7 +547,7 @@ export default function ProfilePage() {
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <Calendar className="h-4 w-4" />
-                  Joined Jan 2024
+                  Joined {joinedDate}
                 </span>
               </div>
 
@@ -823,10 +822,10 @@ export default function ProfilePage() {
 
               <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
                 {[
-                  ["name", "Full Name", "Pankaj Singh", User],
-                  ["branch", "Branch", "CSE Student", ShieldCheck],
-                  ["location", "Location", "Uttarakhand, India", MapPin],
-                  ["skills", "Bio", "Passionate about DSA...", Code2],
+                  ["name", "Full Name", "John Doe", User],
+                  ["branch", "Branch", "Computer Science", ShieldCheck],
+                  ["location", "Location", "City, Country", MapPin],
+                  ["skills", "Bio", "Software Engineer passionate about...", Code2],
                   ["github_profile", "GitHub URL", "https://github.com/...", Github],
                   ["linkedin_profile", "LinkedIn URL", "https://linkedin.com/in/...", Linkedin],
                   ["resume_link", "Resume URL", "https://drive.google.com/...", Briefcase],
