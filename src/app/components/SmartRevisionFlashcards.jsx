@@ -60,6 +60,8 @@ export default function SmartRevisionFlashcards() {
   const [history, setHistory] = useState([]);
   const [dailyChallenge, setDailyChallenge] = useState(null);
   const [challengeCompleted, setChallengeCompleted] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortOption, setSortOption] = useState("default");
 
   const topics = [
   "All",
@@ -71,12 +73,28 @@ export default function SmartRevisionFlashcards() {
   "Dynamic Programming",
 ];
 
-  const currentCards =
+  let currentCards =
   selectedTopic === "All"
     ? flashcards[difficulty]
     : flashcards[difficulty].filter(
         (card) => card.topic === selectedTopic
       );
+
+currentCards = currentCards.filter((card) =>
+  card.topic.toLowerCase().includes(searchTerm.toLowerCase())
+);
+
+if (sortOption === "az") {
+  currentCards = [...currentCards].sort((a, b) =>
+    a.topic.localeCompare(b.topic)
+  );
+}
+
+if (sortOption === "za") {
+  currentCards = [...currentCards].sort((a, b) =>
+    b.topic.localeCompare(a.topic)
+  );
+}
 
       const generateDailyChallenge = () => {
   const allCards = [
@@ -309,6 +327,31 @@ setHistory((prev) => [
 </div>
 
 <div className="mt-5">
+  <input
+    type="text"
+    placeholder="Search revision topics..."
+    value={searchTerm}
+    onChange={(e) => {
+      setSearchTerm(e.target.value);
+      setIndex(0);
+    }}
+    className="w-full p-3 rounded bg-slate-800 border border-slate-700"
+  />
+</div>
+
+<div className="mt-3">
+  <select
+    value={sortOption}
+    onChange={(e) => setSortOption(e.target.value)}
+    className="w-full p-3 rounded bg-slate-800 border border-slate-700"
+  >
+    <option value="default">Default Order</option>
+    <option value="az">A → Z Topics</option>
+    <option value="za">Z → A Topics</option>
+  </select>
+</div>
+
+<div className="mt-5">
   <h3 className="text-sm text-gray-400 mb-2">
     Select Topic
   </h3>
@@ -398,7 +441,19 @@ setHistory((prev) => [
   </ul>
 </div>
 
-      <div className="mt-5 flex gap-3">
+<div className="mt-5 bg-slate-800 p-4 rounded-lg">
+  <h3 className="font-semibold mb-3">
+    Recently Revised Topics
+  </h3>
+
+  {[...new Set(history)]
+    .slice(-5)
+    .map((topic, idx) => (
+      <p key={idx}>🔹 {topic}</p>
+    ))}
+</div>
+
+<div className="mt-5 flex gap-3">
   <button
     onClick={previousCard}
     className="w-1/2 px-4 py-2 bg-blue-600 rounded hover:bg-blue-700"
