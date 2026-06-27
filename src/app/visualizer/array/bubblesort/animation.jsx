@@ -11,6 +11,7 @@ import ChallengeModePanel, {
 } from "@/app/visualizer/array/components/ChallengeMode";
 import { bubbleSortGenerator } from "@/features/algorithms/array/bubbleSortLogic";
 import { useAnimationEngine } from "@/lib/visualizer/useAnimationEngine";
+import CodeExplanationPanel from "./CodeExplanationPanel";
 
 const getFontSize = (value) => {
   const len = String(value).length;
@@ -191,11 +192,20 @@ const BubbleSortVisualizer = () => {
     }
   }, []);
 
-  const engine = useAnimationEngine({ steps, onStep, initialSpeed: 500 });
+  const [speed, setSpeed] = useState(500);
+
+  const engine = useAnimationEngine({ steps, onStep, initialSpeed: speed });
+
+  // Keep engine speed in sync with speed state
+  useEffect(() => {
+    if (engine?.setSpeed) {
+      engine.setSpeed(speed);
+    }
+  }, [speed, engine]);
 
   // Timer logic
   useEffect(() => {
-    if (engine.isPlaying) {
+    if (engine?.isPlaying) {
       const startTime = Date.now() - elapsedTime * 1000;
       timerRef.current = setInterval(() => {
         setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
@@ -204,7 +214,7 @@ const BubbleSortVisualizer = () => {
       clearInterval(timerRef.current);
     }
     return () => clearInterval(timerRef.current);
-  }, [engine.isPlaying]);
+  }, [engine?.isPlaying, elapsedTime, engine]);
 
   const currentStepData = steps[engine.currentStep];
 
@@ -229,9 +239,9 @@ const BubbleSortVisualizer = () => {
 
   useVisualizerKeyboard({
     onStart: handleStart, onReset: handleReset,
-    onSpeedChange: (s) => engine.setSpeed(s * 1000),
+    onSpeedChange: (s) => setSpeed(s * 500),
     onTogglePlayPause: engine.isPlaying ? engine.pause : handleStart,
-    speed: engine.speed / 500,
+    speed: speed / 500,
     sorting: engine.isPlaying,
     sorted: currentStepData?.sorted || false,
   });
@@ -315,8 +325,8 @@ Please explain exactly what is happening in this step in detail.`;
             <PlaybackControls
               isPlaying={engine.isPlaying}
               onPlayPause={engine.isPlaying ? engine.pause : handleStart}
-              speed={engine.speed / 500}
-              onSpeedChange={(s) => engine.setSpeed(s * 500)}
+              speed={speed / 500}
+              onSpeedChange={(s) => setSpeed(s * 500)}
               onStepForward={engine.stepForward}
               onStepBackward={engine.stepBackward}
               onReset={engine.reset}
@@ -330,11 +340,11 @@ Please explain exactly what is happening in this step in detail.`;
               <span className="text-gray-700 dark:text-gray-300 text-sm sm:text-base">Speed:</span>
               <input
                 type="range" min="0.5" max="5" step="0.5"
-                value={engine.speed / 500}
-                onChange={(e) => engine.setSpeed(parseFloat(e.target.value) * 500)}
+                value={speed / 500}
+                onChange={(e) => setSpeed(parseFloat(e.target.value) * 500)}
                 className="w-24 sm:w-32"
               />
-              <span className="text-gray-700 dark:text-gray-300 text-sm sm:text-base">{engine.speed / 500}x</span>
+              <span className="text-gray-700 dark:text-gray-300 text-sm sm:text-base">{speed / 500}x</span>
             </div>
           )}
 
@@ -426,6 +436,32 @@ Please explain exactly what is happening in this step in detail.`;
             </div>
           )}
         </div>
+
+        {/* Code Explanation Panel */}
+        <CodeExplanationPanel
+          currentStep={engine.currentStep}
+          iValues={{
+            i: visualState.currentIndices.i,
+            j: visualState.currentIndices.j,
+            array: currentStepData?.array || array,
+          }}
+        />
+
+        {/* Speed Control */}
+        <div className="flex items-center gap-3 mt-6 mb-6 text-sm text-gray-400 justify-center">
+          <span>Fast</span>
+          <input
+            type="range"
+            min={100}
+            max={1000}
+            step={100}
+            value={speed}
+            onChange={(e) => setSpeed(Number(e.target.value))}
+            className="accent-purple-500"
+          />
+          <span>Slow</span>
+        </div>
+
       </div>
     </main>
   );
