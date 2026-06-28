@@ -20,12 +20,29 @@ const MEMORY_SWEEP_INTERVAL_MS = 60_000;
 const MAX_MEMORY_SESSIONS = parseInt(process.env.MAX_MEMORY_SESSIONS || '1000', 10);
 
 const ATOMIC_WRITE_SCRIPT = `
-  redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
-  redis.call('ZADD', KEYS[2], ARGV[3], KEYS[1])
-  if ARGV[4] == "public" then
-    redis.call('ZADD', KEYS[3], ARGV[3], KEYS[1])
+  local key = KEYS[1]
+  local sessionJson = ARGV[1]
+  local ttl = ARGV[2]
+  local score = ARGV[3]
+  local visibility = ARGV[4]
+  local expectedUpdatedAt = ARGV[5]
+
+  if expectedUpdatedAt and expectedUpdatedAt ~= '' then
+    local existing = redis.call('GET', key)
+    if existing then
+      local decoded = cjson.decode(existing)
+      if decoded.updatedAt ~= expectedUpdatedAt then
+        return 'CONFLICT'
+      end
+    end
+  end
+
+  redis.call('SET', key, sessionJson, 'EX', ttl)
+  redis.call('ZADD', KEYS[2], score, key)
+  if visibility == "public" then
+    redis.call('ZADD', KEYS[3], score, key)
   else
-    redis.call('ZREM', KEYS[3], KEYS[1])
+    redis.call('ZREM', KEYS[3], key)
   end
   return 1
 `;
@@ -179,6 +196,8 @@ const ATOMIC_CONSUME_TOKEN_SCRIPT = `
 const memorySessions = new Map();
 const memorySessionTtls = new Map();
 const memoryLocks = new Map();
+const lockQueues = new Map();
+const LOCK_TIMEOUT_MS = 30000;
 let memorySweepTimer = null;
 let reconciliationTimer = null;
 const RECONCILIATION_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -218,13 +237,21 @@ async function backfillMemorySessionsToRedis() {
         if (!ttl || ttl <= Date.now()) continue;
         const existing = await redis.get(sessionKey(id));
         if (!existing) {
-          await redis.set(sessionKey(id), session, { ex: SESSION_TTL_SECONDS });
+          await redis.set(sessionKey(id), JSON.stringify(session), { ex: SESSION_TTL_SECONDS });
           migrated++;
           memorySessions.delete(id);
           memorySessionTtls.delete(id);
         } else {
-          memorySessions.delete(id);
-          memorySessionTtls.delete(id);
+          const existingSession = JSON.parse(existing);
+          if (new Date(existingSession.updatedAt) >= new Date(session.updatedAt)) {
+            memorySessions.delete(id);
+            memorySessionTtls.delete(id);
+          } else {
+            await redis.set(sessionKey(id), JSON.stringify(session), { ex: SESSION_TTL_SECONDS });
+            migrated++;
+            memorySessions.delete(id);
+            memorySessionTtls.delete(id);
+          }
         }
       }
       await new Promise(resolve => setImmediate(resolve));
@@ -257,7 +284,10 @@ function startReconciliationTimer() {
   if (reconciliationTimer) return;
   reconciliationTimer = setInterval(async () => {
     if (memorySessions.size > 0 && shouldTryRedis()) {
-      await backfillMemorySessionsToRedis();
+      const count = await backfillMemorySessionsToRedis();
+      if (memorySessions.size === 0) {
+        stopReconciliationTimer();
+      }
     }
     // Log warning if memory session count exceeds threshold
     if (memorySessions.size > MEMORY_WRITE_WARN_THRESHOLD) {
@@ -269,6 +299,13 @@ function startReconciliationTimer() {
     }
   }, RECONCILIATION_INTERVAL_MS);
   if (reconciliationTimer.unref) reconciliationTimer.unref();
+}
+
+function stopReconciliationTimer() {
+  if (reconciliationTimer) {
+    clearInterval(reconciliationTimer);
+    reconciliationTimer = null;
+  }
 }
 
 function shouldTryRedis() {
@@ -423,6 +460,10 @@ function sessionKey(sessionId) {
   return `collab:session:${sessionId}`;
 }
 
+function sessionLockKey(sessionId) {
+  return `session:${sessionId}`;
+}
+
 function joinCodeKey(code) {
   return `collab:joinCode:${normalizeJoinCode(code)}`;
 }
@@ -468,7 +509,8 @@ async function readSession(sessionId) {
         session = memorySessions.get(sessionId) || null;
       }
     } else {
-      session = memorySessions.get(sessionId) || null;
+      const stored = memorySessions.get(sessionId);
+      session = stored ? { ...stored } : null;
     }
 
     if (session && Array.isArray(session.subscriptionTokens) && session.subscriptionTokens.length > 0) {
@@ -483,7 +525,7 @@ async function readSession(sessionId) {
   };
 
   if (redis) return doRead();
-  return withMemoryLock(`read:${sessionId}`, doRead);
+  return withMemoryLock(sessionLockKey(sessionId), doRead);
 }
 
 async function findSessionByJoinCode(joinCode) {
@@ -535,15 +577,22 @@ async function writeSession(session, { expectedUpdatedAt } = {}) {
   const doWrite = async () => {
     if (shouldTryRedis()) {
       try {
-        if (expectedUpdatedAt) {
-          const existing = await redis.get(sessionKey(nextSession.id));
-          if (existing && existing.updatedAt !== expectedUpdatedAt) {
-            return Object.assign(new Error("Session was modified by another request. Please retry."), { status: 409 });
-          }
+        const result = await redis.eval(
+          ATOMIC_WRITE_SCRIPT,
+          [sessionKey(nextSession.id), SESSION_INDEX_KEY, SESSION_PUBLIC_INDEX_KEY],
+          [
+            JSON.stringify(nextSession),
+            SESSION_TTL_SECONDS,
+            Date.now(),
+            nextSession.visibility,
+            expectedUpdatedAt || '',
+          ],
+        );
+
+        if (result === 'CONFLICT') {
+          markRedisOnline();
+          return Object.assign(new Error("Session was modified by another request. Please retry."), { status: 409 });
         }
-        await redis.set(sessionKey(nextSession.id), nextSession, {
-          ex: SESSION_TTL_SECONDS,
-        });
         markRedisOnline();
       } catch (err) {
         if (err.status === 409) throw err;
@@ -553,7 +602,7 @@ async function writeSession(session, { expectedUpdatedAt } = {}) {
         if (memorySessions.size >= MAX_MEMORY_SESSIONS) {
           enforceMemorySessionCapacity();
         }
-        memorySessions.set(nextSession.id, nextSession);
+        memorySessions.set(nextSession.id, { ...nextSession });
         touchMemorySession(nextSession.id);
         memoryWriteCount++;
         console.warn(`[sessionStore] Session ${nextSession.id} written to memory fallback. Total memory writes: ${memoryWriteCount}`);
@@ -564,7 +613,7 @@ async function writeSession(session, { expectedUpdatedAt } = {}) {
       if (memorySessions.size >= MAX_MEMORY_SESSIONS) {
         enforceMemorySessionCapacity();
       }
-      memorySessions.set(nextSession.id, nextSession);
+      memorySessions.set(nextSession.id, { ...nextSession });
       touchMemorySession(nextSession.id);
       memoryWriteCount++;
       console.warn(`[sessionStore] Session ${nextSession.id} written to memory fallback. Total memory writes: ${memoryWriteCount}`);
@@ -573,7 +622,7 @@ async function writeSession(session, { expectedUpdatedAt } = {}) {
   };
 
   if (redis) return doWrite();
-  return withMemoryLock(`write:${nextSession.id}`, doWrite);
+  return withMemoryLock(sessionLockKey(nextSession.id), doWrite);
 }
 
 function pruneActiveSubscriptionTokens(tokens, nowMs = Date.now()) {
@@ -637,7 +686,7 @@ async function issueSubscriptionTokenForParticipant(sessionId, userId, { newPass
     }
   }
 
-  return withMemoryLock(sessionId, async () => {
+  return withMemoryLock(sessionLockKey(sessionId), async () => {
     const session = await readSession(sessionId);
     if (!session) {
       return { error: "Session not found", status: 404 };
@@ -711,7 +760,7 @@ async function leaveCollaborationSession(sessionIdentifier, userId) {
     }
   }
 
-  return withMemoryLock(sessionIdentifier, async () => {
+  return withMemoryLock(sessionLockKey(sessionIdentifier), async () => {
     const session = await readSession(sessionIdentifier);
     if (!session) {
       return { error: "Session not found", status: 404 };
@@ -905,16 +954,23 @@ export async function backfillJoinCodeIndex() {
 }
 
 /**
- * Lists publicly visible collaboration sessions using a sorted-set secondary
- * index instead of redis.keys(). Supports cursor-based pagination via a
- * composite cursor (score::sessionId) so callers can page through results
- * without a keyspace scan.  The composite cursor avoids skipping or
- * duplicating entries when multiple sessions share the same timestamp score.
+ * Lists publicly visible collaboration sessions using the dedicated public
+ * sorted-set index (SESSION_PUBLIC_INDEX_KEY) instead of the main index.
+ * Because every entry in this index is already public, no visibility filtering
+ * is needed inside the loop and the offset-skipping bug described in issue #1623
+ * cannot occur.
+ *
+ * Pagination uses a composite cursor ("score::rank-offset") so that pages
+ * remain stable even when multiple sessions share the same millisecond score.
+ * The cursor encodes:
+ *   score  — the ZRANGE BYSCORE upper bound for the next page
+ *   offset — how many entries to skip at that exact score boundary
+ *            (handles ties without re-fetching already-returned entries)
  *
  * @param {object}  options
  * @param {number}  [options.limit=50]    Max results to return (capped at 100).
  * @param {string}  [options.cursor]      Composite cursor from the previous
- *                                        page's nextCursor (format "score::id").
+ *                                        page's nextCursor ("score::offset").
  *                                        Omit for the first page.
  * @returns {{ sessions: object[], nextCursor: string|null }}
  */
@@ -934,12 +990,11 @@ function clampLimit(value) {
 export async function listCollaborationSessions({ limit, cursor } = {}) {
   ensureRedisConnection();
   const pageSize = clampLimit(limit);
-  const parsedCursor = parseCursor(cursor);
-  const maxScore = parsedCursor.score;
-  const offset = parsedCursor.offset;
+  const { score: maxScore, offset: startOffset } = parseCursor(cursor);
 
   if (shouldTryRedis()) {
     try {
+      // Probabilistic cleanup of entries that have passed their TTL.
       if (Math.random() < 0.05) {
         const cutoffMs = Date.now() - SESSION_TTL_MS;
         await redis.zremrangebyscore(SESSION_INDEX_KEY, "-inf", cutoffMs);
@@ -948,87 +1003,92 @@ export async function listCollaborationSessions({ limit, cursor } = {}) {
 
       const sessions = [];
       const expiredIds = [];
-      let currentMaxScore = maxScore;
-      let currentOffset = offset;
-      let lastProcessedScore = null;
-      let processedCountAtLastScore = 0;
-      let hasMore = false;
+      // staleIds — entries present in public index whose stored session is no
+      // longer public (visibility changed after indexing). Remove them lazily.
+      const staleIds = [];
 
-      while (sessions.length < pageSize) {
-        const fetchSize = pageSize - sessions.length + MAX_EXPIRED_BUFFER;
-        const ids = await redis.zrange(SESSION_PUBLIC_INDEX_KEY, currentMaxScore, "-inf", {
-          byScore: true,
-          rev: true,
-          limit: { offset: currentOffset, count: fetchSize },
-        });
+      // Fetch one extra entry beyond pageSize so we can detect whether a next
+      // page exists without a separate COUNT query.
+      const fetchCount = pageSize + 1 + MAX_EXPIRED_BUFFER;
+      const ids = await redis.zrange(SESSION_PUBLIC_INDEX_KEY, maxScore, "-inf", {
+        byScore: true,
+        rev: true,
+        limit: { offset: startOffset, count: fetchCount },
+      });
 
-        if (!ids || ids.length === 0) {
-          hasMore = false;
-          break;
-        }
-
+      if (ids && ids.length > 0) {
         const values = await redis.mget(...ids.map(sessionKey));
         const scores = await redis.zmscore(SESSION_PUBLIC_INDEX_KEY, ...ids);
 
         for (let i = 0; i < ids.length; i++) {
+          // Stop collecting once we have a full page; the remaining entries
+          // only tell us whether a next page exists.
+          if (sessions.length >= pageSize) break;
+
           const id = ids[i];
           const session = values[i];
-          let score = scores[i];
-          
-          if (score === null) score = lastProcessedScore || currentMaxScore;
 
-          if (score === lastProcessedScore) {
-            processedCountAtLastScore++;
-          } else {
-            lastProcessedScore = score;
-            processedCountAtLastScore = 1;
-            if (lastProcessedScore === currentMaxScore) {
-               processedCountAtLastScore += currentOffset;
-            }
-          }
-
-          if (session && session.visibility === "public") {
-            sessions.push(discoverableSessionView(session, { includeJoinCode: false }));
-          } else if (!session) {
+          if (!session) {
+            // Key expired in Redis but the sorted-set member was not yet pruned.
             expiredIds.push(id);
-          } else if (session && session.visibility !== "public") {
-            await redis.zrem(SESSION_PUBLIC_INDEX_KEY, id);
+            continue;
           }
 
-          if (sessions.length >= pageSize) {
-            if (i < ids.length - 1 || ids.length === fetchSize) {
-              hasMore = true;
-            } else {
-              hasMore = false;
+          if (session.visibility !== "public") {
+            // Entry was indexed as public but visibility was later changed.
+            // Remove it from the public index so future queries skip it.
+            staleIds.push(id);
+            continue;
+          }
+
+          sessions.push(discoverableSessionView(session, { includeJoinCode: false }));
+        }
+
+        // Build the next-page cursor from the last entry we actually returned.
+        let nextCursor = null;
+        if (sessions.length === pageSize) {
+          // Find the score + tie-offset of the last returned entry so the next
+          // call starts immediately after it.
+          const lastReturnedIndex = sessions.length - 1;
+          // ids[] is 1-to-1 with values[] (expired/stale entries were skipped
+          // without incrementing sessions[]), so we need the index in ids[]
+          // that corresponds to the last session we pushed.
+          let idIdx = 0;
+          let pushed = 0;
+          for (let i = 0; i < ids.length; i++) {
+            const s = values[i];
+            if (!s || s.visibility !== "public") continue;
+            if (pushed === lastReturnedIndex) { idIdx = i; break; }
+            pushed++;
+          }
+
+          const lastScore = scores[idIdx];
+          if (lastScore !== null && lastScore !== undefined) {
+            // Count how many entries at this same score have already been
+            // returned (including any from previous pages at this score).
+            // Only carry over startOffset when the boundary score hasn't
+            // changed — otherwise it belongs to a different score group.
+            let tieCount = 0;
+            for (let i = 0; i <= idIdx; i++) {
+              if (scores[i] === lastScore) tieCount++;
             }
-            break;
+            if (lastScore === maxScore) tieCount += startOffset;
+            nextCursor = `${lastScore}::${tieCount}`;
           }
         }
 
-        if (sessions.length >= pageSize) {
-          break;
+        // Lazy cleanup — do not block the response.
+        if (expiredIds.length > 0) removeFromSessionIndex(expiredIds).catch(() => {});
+        if (staleIds.length > 0) {
+          redis.zrem(SESSION_PUBLIC_INDEX_KEY, ...staleIds).catch(() => {});
         }
 
-        if (ids.length < fetchSize) {
-          hasMore = false;
-          break;
-        }
-
-        currentMaxScore = lastProcessedScore;
-        currentOffset = processedCountAtLastScore;
-      }
-
-      if (expiredIds.length > 0) {
-        await removeFromSessionIndex(expiredIds);
-      }
-
-      let nextCursor = null;
-      if (hasMore && lastProcessedScore !== null) {
-        nextCursor = `${lastProcessedScore}::${processedCountAtLastScore}`;
+        markRedisOnline();
+        return { sessions, nextCursor };
       }
 
       markRedisOnline();
-      return { sessions, nextCursor };
+      return { sessions: [], nextCursor: null };
     } catch (err) {
       markRedisOffline(err);
     }
@@ -1050,16 +1110,16 @@ export async function listCollaborationSessions({ limit, cursor } = {}) {
       return st <= maxScore;
     });
     if (startIndex >= 0) {
-      startIndex += offset;
+      startIndex += startOffset;
     } else {
       return { sessions: [], nextCursor: null };
     }
   }
 
   const page = memorySessionsList.slice(startIndex, startIndex + pageSize);
-  const hasMore = startIndex + pageSize < memorySessionsList.length;
+  const memHasMore = startIndex + pageSize < memorySessionsList.length;
   let nextCursor = null;
-  if (hasMore && page.length > 0) {
+  if (memHasMore && page.length > 0) {
     const last = page[page.length - 1];
     const lastScore = new Date(last.updatedAt).getTime();
     let scoreCount = 0;
@@ -1069,7 +1129,7 @@ export async function listCollaborationSessions({ limit, cursor } = {}) {
     }
     let nextOffset = scoreCount;
     if (lastScore === maxScore) {
-       nextOffset = offset + scoreCount;
+      nextOffset = startOffset + scoreCount;
     }
     nextCursor = `${lastScore}::${nextOffset}`;
   }
@@ -1170,24 +1230,69 @@ export async function claimSessionPresenter(sessionId, { userId } = {}) {
 function withMemoryLock(key, fn) {
   const lockKey = `collab:lock:${key}`;
   return new Promise((resolve, reject) => {
-    const tryLock = () => {
-      if (memoryLocks.get(lockKey)) {
-        setTimeout(tryLock, 5);
-        return;
-      }
-      memoryLocks.set(lockKey, true);
-      Promise.resolve().then(() => fn())
-        .then((result) => {
-          memoryLocks.delete(lockKey);
-          resolve(result);
-        })
-        .catch((err) => {
-          memoryLocks.delete(lockKey);
-          reject(err);
-        });
-    };
-    tryLock();
+    const entry = { resolve, reject, fn };
+    const queue = lockQueues.get(lockKey);
+    if (queue) {
+      queue.push(entry);
+      return;
+    }
+    const newQueue = [entry];
+    lockQueues.set(lockKey, newQueue);
+    executeLocked(lockKey, newQueue);
   });
+}
+
+async function executeLocked(lockKey, queue) {
+  const entry = queue[0];
+  let completed = false;
+  const timer = setTimeout(() => {
+    if (completed) return;
+    completed = true;
+    const currentQueue = lockQueues.get(lockKey);
+    if (!currentQueue || currentQueue.length === 0) {
+      lockQueues.delete(lockKey);
+      return;
+    }
+    currentQueue.shift();
+    entry.reject(new Error(`Lock timeout for ${lockKey}`));
+    if (currentQueue.length > 0) {
+      Promise.resolve().then(() => executeLocked(lockKey, currentQueue));
+    } else {
+      lockQueues.delete(lockKey);
+    }
+  }, LOCK_TIMEOUT_MS);
+
+  try {
+    const result = await entry.fn();
+    if (completed) return;
+    completed = true;
+    clearTimeout(timer);
+    notifyNext(lockKey, result, null);
+  } catch (err) {
+    if (completed) return;
+    completed = true;
+    clearTimeout(timer);
+    notifyNext(lockKey, null, err);
+  }
+}
+
+function notifyNext(lockKey, result, error) {
+  const queue = lockQueues.get(lockKey);
+  if (!queue || queue.length === 0) {
+    lockQueues.delete(lockKey);
+    return;
+  }
+  const current = queue.shift();
+  if (error) {
+    current.reject(error);
+  } else {
+    current.resolve(result);
+  }
+  if (queue.length > 0) {
+    Promise.resolve().then(() => executeLocked(lockKey, queue));
+  } else {
+    lockQueues.delete(lockKey);
+  }
 }
 
 export async function exchangeRealtimeSubscriptionToken(
@@ -1242,7 +1347,7 @@ export async function exchangeRealtimeSubscriptionToken(
   }
 
   // In-memory fallback with mutual exclusion
-  return withMemoryLock(sessionId, async () => {
+  return withMemoryLock(sessionLockKey(sessionId), async () => {
     const session = await readSession(sessionId);
     if (!session) {
       return { error: "Session not found", status: 404 };
@@ -1330,22 +1435,24 @@ if (typeof process !== "undefined" && process.on) {
     }
   }
 
-  process.on("SIGTERM", () => {
+  const onSigterm = () => {
     console.log("[sessionStore] SIGTERM received, dumping memory sessions...");
-    // Attempt to backfill to Redis first if possible
     if (redis && shouldTryRedis()) {
       backfillMemorySessionsToRedis().finally(() => dumpMemorySessions());
     } else {
       dumpMemorySessions();
     }
-  });
+  };
 
-  process.on("SIGINT", () => {
+  const onSigint = () => {
     console.log("[sessionStore] SIGINT received, dumping memory sessions...");
     if (redis && shouldTryRedis()) {
       backfillMemorySessionsToRedis().finally(() => dumpMemorySessions());
     } else {
       dumpMemorySessions();
     }
-  });
+  };
+
+  process.on("SIGTERM", onSigterm);
+  process.on("SIGINT", onSigint);
 }

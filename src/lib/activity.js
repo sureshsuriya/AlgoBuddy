@@ -1,14 +1,16 @@
 import { supabase } from "@/lib/supabase";
+import { api } from "./apiClient";
 
 const trackActivity = async (type = "site_visit") => {
   try {
-    await fetch("/api/activity", {
+    await api.request("/api/activity", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type }),
+      body: { type, localDate: getLocalISODate() },
     });
+    return { success: true };
   } catch (e) {
     console.error("trackActivity failed:", e);
+    return { success: false, error: e };
   }
 };
 

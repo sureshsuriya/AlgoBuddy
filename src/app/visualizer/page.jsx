@@ -69,10 +69,7 @@ export const metadata = {
   },
 };
 
-
-
 const sections = [
-  
   {
     title: "Code Lab",
     slug: "code-lab",
@@ -120,6 +117,7 @@ const sections = [
   },
   {
     title: "Array",
+    slug: "array",
     desc: "Searching & sorting algorithms on contiguous memory",
     icon: (
       <svg
@@ -158,6 +156,8 @@ const sections = [
           { name: "Insertion Sort", path: "/visualizer/array/insertionsort" },
           { name: "Merge Sort", path: "/visualizer/array/mergesort" },
           { name: "Quick Sort", path: "/visualizer/array/quicksort" },
+          { name: "Heap Sort", path: "/visualizer/array/heapsort" },
+          { name: "Radix Sort", path: "/visualizer/array/radixsort" },
           { name: "Counting Sort", path: "/visualizer/array/countingsort" },
         ],
       },
@@ -172,6 +172,7 @@ const sections = [
   },
   {
     title: "Recursion",
+    slug: "recursion",
     desc: "Understand stack frames, call stacks, base cases, and tree recursion through animated execution flow",
     icon: (
       <svg
@@ -212,6 +213,7 @@ const sections = [
   },
   {
     title: "Stack",
+    slug: "stack",
     desc: "LIFO operations, polish notations & implementations",
     icon: (
       <svg
@@ -268,6 +270,7 @@ const sections = [
   },
   {
     title: "Queue",
+    slug: "queue",
     desc: "FIFO operations, variants & implementations",
     icon: (
       <svg
@@ -338,6 +341,7 @@ const sections = [
   },
   {
     title: "Linked List",
+    slug: "linkedlist",
     desc: "Singly, doubly, circular — traversal to merge",
     icon: (
       <svg
@@ -425,6 +429,7 @@ const sections = [
   },
   {
     title: "Tree",
+    slug: "tree",
     desc: "BST, AVL, traversals, tries & advanced trees",
     icon: (
       <svg
@@ -563,6 +568,7 @@ const sections = [
   },
   {
     title: "HashMap",
+    slug: "hashmap",
     desc: "Key-value pairs with hash function and collision handling",
     icon: (
       <svg
@@ -598,6 +604,7 @@ const sections = [
   },
   {
     title: "Graph",
+    slug: "graph",
     desc: "BFS, DFS, shortest paths, MST & topological sort",
     icon: (
       <svg
@@ -763,130 +770,9 @@ const sections = [
       },
     ],
   },
-
-    {
-    title: "Quiz Mode",
-    slug: "quiz",
-    desc: "Test your knowledge with algorithm comparison challenges",
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        className="h-6 w-6"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M9 12l2 2 4-4"
-        />
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M12 3a9 9 0 100 18 9 9 0 000-18z"
-        />
-      </svg>
-    ),
-    info: {
-      About:
-        "Interactive quizzes that help learners choose the best algorithm or data structure for different problem scenarios.",
-      Representation: null,
-    },
-    subsections: [
-      {
-        title: "Practice",
-        items: [
-          {
-            name: "Algorithm Comparison Quiz",
-            path: "/visualizer/quiz",
-          },
-        ],
-      },
-    ],
-    },
-
-  {
-    title: "Smart Revision",
-    slug: "smart-revision",
-    desc: "Revise completed DSA topics with interactive flashcards",
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        className="h-6 w-6"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M9 12h6M12 9v6M5 5h14v14H5z"
-        />
-      </svg>
-    ),
-    info: {
-      About:
-        "Generate AI-powered flashcards from completed DSA topics and improve long-term retention using smart revision.",
-      Representation: null,
-    },
-    subsections: [
-      {
-        title: "Revision Tools",
-        items: [
-          {
-            name: "DSA Flashcards",
-            path: "/visualizer/revision-flashcards"
-          },
-        ],
-      },
-    ],
-  },
-  {
-  title: "Collaborative Sessions",
-  slug: "collaboration",
-  desc: "Learn and visualize algorithms with friends in real-time",
-  icon: (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      className="h-6 w-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M17 20h5V4H2v16h5m10 0v-4a3 3 0 00-3-3H10a3 3 0 00-3 3v4m10 0H7m10-12a3 3 0 11-6 0 3 3 0 016 0zm-8 0a3 3 0 11-6 0 3 3 0 016 0z"
-      />
-    </svg>
-  ),
-  info: {
-    About:
-      "Create collaborative algorithm rooms, discuss execution steps, and learn together.",
-    Representation: null,
-  },
-  subsections: [
-    {
-      title: "Collaborative Learning",
-      items: [
-        {
-          name: "Start Session",
-          path: "/visualizer/collaboration",
-        },
-      ],
-    },
-  ],
-},
 ];
+
 const Visualizer = () => {
-  /* Strip non-serialisable `info` (contains JSX modals) before
-     passing to the client component. Icons are fine — they're
-     plain <svg> elements. */
   const clientSections = sections.map(({ info, ...rest }) => ({
     ...rest,
     slug: rest.slug || rest.title.toLowerCase().replace(/\s+/g, "-")
@@ -898,12 +784,10 @@ const Visualizer = () => {
       style={{ fontFamily: "'Inter', 'Source Sans 3', sans-serif" }}
     >
       <TutorialOverlay />
-
       <VisualizerClient initialSections={clientSections} />
-
+      <BackToTop />
       <div className="w-full relative">
         <BookmarkSection />
-        <BackToTop />
         <Footer />
       </div>
     </div>
@@ -911,4 +795,3 @@ const Visualizer = () => {
 };
 
 export default Visualizer;
-
