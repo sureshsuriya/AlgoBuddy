@@ -137,7 +137,7 @@ export const graphTopics = {
   dijkstra: {
     key: "dijkstra",
     title: "Dijkstra's Algorithm",
-    category: "Graph Algorithm",
+    category: "Advanced Graphs",
     description:
       "Find shortest paths from one source to all vertices in a weighted graph with non-negative edge weights.",
     animationType: "dijkstra",
